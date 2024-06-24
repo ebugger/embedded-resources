@@ -20,11 +20,13 @@ struct circular_buf_t
 
 static inline size_t advance_headtail_value(size_t value, size_t max)
 {
+	// 如果到了物理尾部， 那么更新到0， 注意这个自增运算，后面会返回
 	if(++value == max)
 	{
 		value = 0;
 	}
-
+	// 如果没有到物理尾部就直接返回当前的位置的下一个位置， 以便于和其他位置进行比较
+	// 注意再上一个if里面已经进行了自增
 	return value;
 }
 
@@ -87,6 +89,7 @@ size_t circular_buf_capacity(cbuf_handle_t me)
 	assert(me);
 
 	// We account for the space we can't use for thread safety
+	// 浪费一个队列元素作为队列满的标记判断， 所以无需锁
 	return me->max - 1;
 }
 
@@ -101,7 +104,7 @@ void circular_buf_put(cbuf_handle_t me, uint8_t data)
 	me->buffer[me->head] = data;
 	if(circular_buf_full(me))
 	{
-		// THIS CONDITION IS NOT THREAD SAFE
+		// THIS CONDITION IS NOT THREAD SAFE put修改了tail， 而get也会修改tail
 		me->tail = advance_headtail_value(me->tail, me->max);
 	}
 
@@ -113,7 +116,7 @@ int circular_buf_try_put(cbuf_handle_t me, uint8_t data)
 	assert(me && me->buffer);
 
 	int r = -1;
-
+	// 没有满的才能往里面写
 	if(!circular_buf_full(me))
 	{
 		me->buffer[me->head] = data;
@@ -129,7 +132,7 @@ int circular_buf_get(cbuf_handle_t me, uint8_t* data)
 	assert(me && data && me->buffer);
 
 	int r = -1;
-
+	// 不是空的才能从里面读
 	if(!circular_buf_empty(me))
 	{
 		*data = me->buffer[me->tail];
@@ -149,9 +152,10 @@ bool circular_buf_empty(cbuf_handle_t me)
 bool circular_buf_full(cbuf_handle_t me)
 {
 	// We want to check, not advance, so we don't save the output here
+	// 传值进来的， 仅仅是测试， 没有更新
 	return advance_headtail_value(me->head, me->max) == me->tail;
 }
-
+// 读取前几个有效数据， 而不是一个
 int circular_buf_peek(cbuf_handle_t me, uint8_t* data, unsigned int look_ahead_counter)
 {
 	int r = -1;
